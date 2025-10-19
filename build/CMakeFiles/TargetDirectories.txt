@@ -1,0 +1,11 @@
+/root/eecs489/p3/489a3/build/CMakeFiles/edit_cache.dir
+/root/eecs489/p3/489a3/build/CMakeFiles/rebuild_cache.dir
+/root/eecs489/p3/489a3/build/_deps/spdlog-build/CMakeFiles/spdlog.dir
+/root/eecs489/p3/489a3/build/_deps/spdlog-build/CMakeFiles/edit_cache.dir
+/root/eecs489/p3/489a3/build/_deps/spdlog-build/CMakeFiles/rebuild_cache.dir
+/root/eecs489/p3/489a3/build/_deps/cxxopts-build/CMakeFiles/edit_cache.dir
+/root/eecs489/p3/489a3/build/_deps/cxxopts-build/CMakeFiles/rebuild_cache.dir
+/root/eecs489/p3/489a3/build/_deps/cxxopts-build/include/CMakeFiles/edit_cache.dir
+/root/eecs489/p3/489a3/build/_deps/cxxopts-build/include/CMakeFiles/rebuild_cache.dir
+/root/eecs489/p3/489a3/build/src/CMakeFiles/edit_cache.dir
+/root/eecs489/p3/489a3/build/src/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,14 @@
+# Target labels
+ spdlog-populate
+# Source files and their labels
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/CMakeFiles/spdlog-populate
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/CMakeFiles/spdlog-populate.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/CMakeFiles/spdlog-populate-complete.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-build.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-configure.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-download.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-install.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-mkdir.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-patch.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-test.rule
+/root/eecs489/p3/489a3/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-update.rule

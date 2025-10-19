@@ -1,7 +1,5 @@
 # common/CMakeLists.txt
 add_library(common STATIC
-    Crc32.hpp
-    PacketHeader.hpp
     crap.cpp
 )
 

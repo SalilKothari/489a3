@@ -2,6 +2,7 @@
 set(
     WSENDER
     main.cpp
+    wServer.cpp
 )
 
 add_executable(wSender ${WSENDER})

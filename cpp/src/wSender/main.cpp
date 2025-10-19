@@ -16,35 +16,53 @@
 #include <cxxopts.hpp>
 #include <spdlog/spdlog.h>
 #include <cctype>
+#include "wServer.hpp"
 
 
+static void verifyPort(const int port) {
+    if (port < 1024 || port > 0xFFFF) {
+        spdlog::error("Error: port must be in the range of [1024, 65535]\n");
+        std::exit(EXIT_FAILURE);
+    }
+}
 
 int main(int argc, char *argv[]) {
-    // cxxopts::Options options("miProxy", "Adaptive bitrate selection through an HTTP proxy server and load balancing");
-    // options.add_options()
-    //     ("b,balance", "Load balancing should occur", cxxopts::value<bool>())
-    //     ("l,listen-port", "TCP port proxy listens on for browser connections", cxxopts::value<int>())
-    //     ("h,host", "IP address of the video server", cxxopts::value<std::string>())
-    //     ("p,port", "Port number", cxxopts::value<int>())
-    //     ("a,alpha", "Alpha coefficient for EWMA throughput estimate", cxxopts::value<double>());
+
+    /*
+    wSender should be invoked as follows:
+
+        ./wSender -h 127.0.0.1 -p 8000 -w 10 -i input.in -o sender.out
+
+        -h | --hostname The IP address of the host that wReceiver is running on.
+        -p | --port The port number on which wReceiver is listening.
+        -w | --window-size Maximum number of outstanding packets in the current window.
+        -i | --input-file Path to the file that has to be transferred. It can be a text file or binary file (e.g., image or video).
+        -o | --output-log The file path to which you should log the messages as described above.
+    */
+
+    cxxopts::Options options("miProxy", "Adaptive bitrate selection through an HTTP proxy server and load balancing");
+    options.add_options()
+        ("h,hostname", "The IP address of the host that wReceiver is running on", cxxopts::value<std::string>())
+        ("p,port", "The port number on which wReceiver is listening", cxxopts::value<int>())
+        ("w,window-size", "Maximum number of outstanding packets in the current window", cxxopts::value<int>())
+        ("i,input-file", "Path to the file that has to be transferred. It can be a text file or binary file (e.g., image or video)", cxxopts::value<std::string>())
+        ("o,output-log", "The file path to which you should log the messages as described above", cxxopts::value<std::string>());
         
-    // auto result = options.parse(argc, argv);
+    auto result = options.parse(argc, argv);
 
     // // check if we need to print something
-    // const auto listenPort = result["listen-port"].as<int>();
-    // const auto port = result["port"].as<int>();
-    // const std::string hostname = result["host"].as<std::string>();
-    // const auto alpha = result["alpha"].as<double>();
-    // const bool balanceMode = result.count("balance") > 0;
+    const std::string hostname = result["hostname"].as<std::string>();
+    const auto port = result["port"].as<int>();
+    const auto windowSize = result["window-size"].as<int>();
+    const std::string inputFile = result["input-file"].as<std::string>();
+    const std::string outputFile = result["output-log"].as<std::string>();
 
-    // verifyPort(listenPort);
-    // verifyPort(port);
+    verifyPort(port);
 
-    // if (alpha < 0 || alpha > 1) {
-    //     spdlog::error("Alpha must be in the range [0, 1]\n");
-    //     std::exit(EXIT_FAILURE);
-    // }
+    
+    wServer wServer(hostname, port, inputFile, outputFile, windowSize);
 
-
+    wServer.initialize_listen_socket();
+    wServer.closeServer();
     return 0;
 }

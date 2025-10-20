@@ -4,9 +4,9 @@
 #include <string>
 #define SERVER_PORT 3000
 
-class wServer {
+class wReceiver {
     public:
-        wServer(std::string recHostname, int port, std::string in, std::string out, int windowSize) 
+        wReceiver(std::string recHostname, int port, std::string in, std::string out, int windowSize) 
         : recHostname(recHostname), port_(port), inputFile(in), outputFile(out), windowSize(windowSize){}
 
         void initialize_listen_socket();

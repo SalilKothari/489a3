@@ -17,7 +17,7 @@
 #include <spdlog/spdlog.h>
 #include <cctype>
 
-void wServer::initialize_listen_socket(){
+void wReceiver::initialize_listen_socket(){
     serverfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (serverfd < 0) {
         spdlog::error("Error in creating server socket");
@@ -45,6 +45,6 @@ void wServer::initialize_listen_socket(){
 
 }
 
-void wServer::closeServer(){
+void wReceiver::closeServer(){
     close(serverfd);    
 }

@@ -34,6 +34,8 @@ int main(int argc, char *argv[]) {
     const std::string outputFile = result["output-log"].as<std::string>();
 
     verifyPort(port);
+    wReceiver rcvr(port, outputDir, outputFile, windowSize);
+    rcvr.run();
     
     return 0;
 }

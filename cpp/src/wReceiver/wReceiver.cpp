@@ -84,13 +84,19 @@ void wReceiver::sendAck(int ackSeqNum) {
         ssize_t n = sendto(receiverfd, ackBuf, sizeof(ackBuf), 0, reinterpret_cast<sockaddr*>(&senderAddr), senderAddrLen);
         totalSent += n;
     } while (totalSent < sizeof(ackBuf));
+
+    std::ofstream log;
+    log.clear();
+    log.open(outputFile, std::ios::app);
+
+    log << ack.type << ' ' << ack.seqNum << ' ' << ack.length << ' ' << ack.checksum << '\n';
 }
 
 void wReceiver::awaitStartPacket() {
-    if (connected) {
-        spdlog::error("Connection called when already connected");
-        std::exit(EXIT_FAILURE);
-    }
+    // if (connected) {
+    //     spdlog::error("Connection called when already connected");
+    //     return;
+    // }
 
     PacketHeader header = getHeader();
 
@@ -106,9 +112,118 @@ void wReceiver::awaitStartPacket() {
         std::exit(EXIT_FAILURE);
     }
 
+    std::ofstream log;
+    log.clear();
+    log.open(outputFile, std::ios::app);
+    log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
+
     sendAck(seqNum);
 }
 
 void wReceiver::initWindow() {
     window.resize(windowSize);
+    leftWindowBound = 0;
+    rightWindowBound = windowSize - 1;
+}
+
+int wReceiver::findIndexInWindow(size_t seqNum) {
+    if (leftWindowBound > seqNum || seqNum > rightWindowBound) {
+        spdlog::debug("Drop packet");
+        return -1;
+    }
+
+    return seqNum - leftWindowBound;
+} 
+
+std::vector<uint8_t> wReceiver::getData(size_t length) {
+    auto data = std::vector<uint8_t>(length);
+
+    size_t totaln = 0;
+    do {
+        size_t n = recvfrom(receiverfd, data.data() + totaln, length - totaln, 0, reinterpret_cast<sockaddr*>(&senderAddr), &senderAddrLen);
+        totaln += n;
+    } while(totaln < length);
+
+    return data;
+}
+
+void wReceiver::adjustWindow() {
+    std::ofstream ofs;
+    ofs.clear();
+    ofs.open(outputDir + "/FILE-" + std::to_string(connectionIdx) + ".out", std::ios::app);
+
+    while (window.begin()->second.size() != 0) {
+        ofs.write(reinterpret_cast<char *>(window.begin()->second.data()), window.begin()->second.size());
+        window.pop_front();
+        std::vector<uint8_t> m;
+        window.push_back(std::make_pair(0, m));
+
+        rightWindowBound++;
+        leftWindowBound++;
+        dataSeqNum++;
+        
+    }
+}
+
+void wReceiver::awaitDataPacket() {
+    PacketHeader header = getHeader();
+    auto data = getData(header.length);
+
+    if (header.type == 1 && header.seqNum == seqNum) {
+        connectionIdx++;
+        std::ofstream log;
+        log.clear();
+        log.open(outputFile, std::ios::app);
+        log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
+        
+        sendAck(seqNum);
+        leftWindowBound = 0;
+        rightWindowBound = windowSize - 1;
+        connected = false;
+        dataSeqNum = 0;
+    }
+
+    if (header.type != 2) {
+        spdlog::debug("Expecting data packet");
+        return;
+    }
+
+    if (crc32(data.data(), data.size()) != header.checksum) {
+        spdlog::debug("DATA PACKET IS CORRUPTED");
+        return;
+    }
+
+    int index = findIndexInWindow(header.seqNum);
+    if (index == -1) {
+        spdlog::debug("No space in window - dropping packet");
+        sendAck(dataSeqNum); // check this l8tr
+        return;
+    }    
+
+    window[index] = std::make_pair(seqNum, data);
+    
+    adjustWindow();
+
+    std::ofstream log;
+    log.clear();
+    log.open(outputFile, std::ios::app);
+
+    log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
+
+    sendAck(dataSeqNum);
+}
+
+void wReceiver::run() {
+    initWindow();
+
+    initialize_listen_socket();
+
+    while (true) {
+        if (!connected) {
+            awaitStartPacket();
+        }
+        else {
+            awaitDataPacket();
+        }
+    }
 }

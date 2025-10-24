@@ -1,23 +1,14 @@
-#include "wServer.hpp"
+#include "wSender.hpp"
 #include <arpa/inet.h>       // inet_ntoa
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/time.h>        // FD_SET, FD_ISSET, FD_ZERO macros
 #include <unistd.h>          // close
-#include <cerrno>
-#include <csignal>
-#include <cstring>
 #include <cstdlib>
-#include <cstdio>
-#include <iostream>
-#include <string>
-#include <sstream>
-#include <unordered_map>
 #include <spdlog/spdlog.h>
-#include <cctype>
 
-void wReceiver::initialize_listen_socket(){
+void wSender::initialize_listen_socket(){
     serverfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (serverfd < 0) {
         spdlog::error("Error in creating server socket");
@@ -45,6 +36,6 @@ void wReceiver::initialize_listen_socket(){
 
 }
 
-void wReceiver::closeServer(){
+void wSender::closeServer(){
     close(serverfd);    
 }

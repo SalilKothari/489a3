@@ -58,7 +58,6 @@ int main(int argc, char *argv[]) {
     const std::string outputFile = result["output-log"].as<std::string>();
 
     verifyPort(port);
-
     
     wReceiver wServer(hostname, port, inputFile, outputFile, windowSize);
 

@@ -45,10 +45,10 @@ PacketHeader wReceiver::getHeader() {
     memcpy(&length, buff + 8, 4);
     memcpy(&checksum, buff + 12, 4);
 
-    header.type = type;
-    header.seqNum = seqNum;
-    header.length = length;
-    header.checksum = checksum;
+    header.type = ntohs(type);
+    header.seqNum = ntohs(seqNum);
+    header.length = ntohs(length);
+    header.checksum = ntohs(checksum);
 
     return header;
 }
@@ -56,22 +56,10 @@ PacketHeader wReceiver::getHeader() {
 void wReceiver::sendAck(int ackSeqNum) {
     PacketHeader ack;
 
-    ack.type = 3;
-    ack.seqNum = ackSeqNum;
-    ack.length = 0;
-    ack.checksum = 0;
-    /*
-        uint8_t respBuf[sizeof(response)];
-        memcpy(respBuf, &response.videoserver_addr, 4);
-        memcpy(respBuf + 4, &response.videoserver_port, 2);
-        memcpy(respBuf + 6, &response.request_id, 2);
-
-        ssize_t totalSent = 0;
-        do {
-            ssize_t n = send(clientfd, respBuf, sizeof(respBuf), 0);
-            totalSent += n;
-        } while (totalSent < sizeof(respBuf));
-    */
+    ack.type = htons(3);
+    ack.seqNum = htons(ackSeqNum);
+    ack.length = htons(0);
+    ack.checksum = htons(0);
 
     uint8_t ackBuf[sizeof(PacketHeader)];
     memcpy(ackBuf, &ack.type, 4);
@@ -89,7 +77,7 @@ void wReceiver::sendAck(int ackSeqNum) {
     log.clear();
     log.open(outputFile, std::ios::app);
 
-    log << ack.type << ' ' << ack.seqNum << ' ' << ack.length << ' ' << ack.checksum << '\n';
+    log << ntohs(ack.type) << ' ' << ntohs(ack.seqNum) << ' ' << ntohs(ack.length) << ' ' << ntohs(ack.checksum) << '\n';
 }
 
 void wReceiver::awaitStartPacket() {

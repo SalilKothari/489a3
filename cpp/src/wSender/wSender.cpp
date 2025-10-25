@@ -65,9 +65,9 @@ PacketHeader wSender::getHeader() {
     memcpy(&checksum, buff + 12, 4);
 
     header.type = ntohs(type);
-    header.seqNum = htons(seqNum);
-    header.length = htons(length);
-    header.checksum = htons(checksum);
+    header.seqNum = ntohs(seqNum);
+    header.length = ntohs(length);
+    header.checksum = ntohs(checksum);
 
     return header;
 }

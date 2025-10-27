@@ -9,6 +9,9 @@
 #include <fstream>
 #include <spdlog/spdlog.h>
 #include <cassert>
+#include <filesystem>
+#include "Crc32.hpp"
+
 
 void wSender::initialize_listen_socket(){
     senderfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -91,6 +94,71 @@ void wSender::logToFile(PacketHeader& header, bool reverse) {
     ofs << ntohs(header.type) << ' ' << ntohs(header.seqNum) << ' ' << ntohs(header.length) << ' ' << ntohs(header.checksum) << '\n';
 }
 
+
+void wSender::sendAwaitPacket(PacketHeader &startHeader, char * startBuf, size_t len){
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(recfd_, &readfds);
+
+    // Await ACK for start packet
+
+    ssize_t totalSent = 0;
+                do {
+                    ssize_t n = sendto(recfd_, startBuf, len, 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
+                    totalSent += n;
+                } while (totalSent < len);
+    
+    send:
+        for (;;) {
+
+            auto startTimeout = std::chrono::high_resolution_clock::now();
+
+            logToFile(startHeader, true);
+
+            auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::high_resolution_clock::now() - startTimeout
+            );
+
+            int ready = select(recfd_ + 1, &readfds, nullptr, nullptr, nullptr);
+
+            if (ready > 0) break;
+
+            if (timeElapsed.count() >= 500) {
+                ssize_t totalSent = 0;
+                do {
+                    ssize_t n = sendto(recfd_, startBuf, len, 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
+                    totalSent += n;
+                } while (totalSent < len);
+
+                startTimeout = std::chrono::high_resolution_clock::now();
+            }
+        }
+
+    PacketHeader ackHeader = getHeader();
+    if(ackHeader.type != 3){
+        spdlog::error("Received non ack packet");
+        goto send;
+    }
+}
+
+
+void wSender::sendPacket(PacketHeader &startHeader, char * startBuf, size_t len, int dataSeq){
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(recfd_, &readfds);
+
+    // Await ACK for start packet
+
+    ssize_t totalSent = 0;
+        do {
+            ssize_t n = sendto(recfd_, startBuf, len, 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
+            totalSent += n;
+        } while (totalSent < len);
+    
+     logToFile(startHeader, true);
+     sendWindow.emplace_back(std::make_pair(dataSeq, std::chrono::high_resolution_clock::now()));
+}
+
 void wSender::sendStartPacket() {
     PacketHeader startHeader;
     seqNum = getSeqNum();
@@ -100,7 +168,7 @@ void wSender::sendStartPacket() {
     startHeader.seqNum = htons(seqNum);
     startHeader.checksum = htons(0);
 
-    uint8_t startBuf[sizeof(PacketHeader)];
+    char startBuf[sizeof(PacketHeader)];
     memcpy(startBuf, &startHeader.type, 4);
     memcpy(startBuf + 4, &startHeader.seqNum, 4);
     memcpy(startBuf + 8, &startHeader.length, 4);
@@ -112,37 +180,79 @@ void wSender::sendStartPacket() {
         totalSent += n;
     } while (totalSent < sizeof(startBuf));
 
-    logToFile(startHeader, true);
+    sendAwaitPacket(startHeader, startBuf, 16);
 
-    fd_set readfds;
-    FD_ZERO(&readfds);
-    FD_SET(recfd_, &readfds);
+}
 
-    // Await ACK for start packet
-    auto startTimeout = std::chrono::high_resolution_clock::now();
-    for (;;) {
-        auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::high_resolution_clock::now() - startTimeout
-        );
+void wSender::sendData(){
 
-        int ready = select(recfd_ + 1, &readfds, nullptr, nullptr, nullptr);
 
-        if (ready > 0) break;
+    std::ifstream ifs;
+    ifs.clear();
+    ifs.open(inputFile, std::ios::binary);
 
-        if (timeElapsed.count() >= 500) {
-            ssize_t totalSent = 0;
-            do {
-                ssize_t n = sendto(recfd_, startBuf, sizeof(startBuf), 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
-                totalSent += n;
-            } while (totalSent < sizeof(startBuf));
+    //1472 for a packet = Header + data
 
-            startTimeout = std::chrono::high_resolution_clock::now();
+    std::vector<char> buf;
+    buf.resize(1472);
+
+    size_t totalRead = 0;
+    size_t totalFileSize = std::filesystem::file_size(inputFile);
+    int dataSeq = 0;
+
+
+    while(true){
+
+
+        if(totalRead >= totalFileSize) break;
+
+        if(sendWindow.size() < windowSize){
+            //send a packet
+            size_t len;
+            //extract data first
+            if(totalFileSize - totalRead < 1456 ){
+                len = totalFileSize - totalRead;
+                ifs.read(buf.data() + 16, len);
+
+            }
+            else{
+                ifs.read(buf.data() + 16, 1456);
+                len = 1456;
+            }
+
+            //Create packetHeader
+            PacketHeader data;
+            data.type = htons(2);
+            data.length = htons(len);
+            data.seqNum = htons(dataSeq);
+            data.checksum = htons(crc32(buf.data(), len) );
+
+            memcpy(buf.data(), &data.type, 4);
+            memcpy(buf.data() + 4, &data.seqNum, 4);
+            memcpy(buf.data() + 8, &data.length, 4);
+            memcpy(buf.data() + 12, &data.checksum, 4);
+
+            //send 
+            sendPacket(data, buf.data(), len, dataSeq);
         }
+        
+
+        //TODO: Implement await
+        // if()
+
+        // if we receive an ack, pop from deque
+        // wait 500ms, if no ack - retransmit
+
+
     }
 
-    PacketHeader ackHeader = getHeader();
-    assert(ackHeader.type == 3);
+
+
+    
+
 }
+
+
 
 void wSender::closeServer(){
     close(senderfd);    

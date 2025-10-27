@@ -3,6 +3,7 @@
 
 #include <string>
 #include <netdb.h>
+#include <deque>
 #include <chrono>
 #include "PacketHeader.hpp"
 #define SERVER_PORT 3000
@@ -18,7 +19,9 @@ class wSender {
         // Flow
         void initialize_listen_socket();
         void sendStartPacket();
-
+        void sendData();
+        void sendAwaitPacket(PacketHeader &startHeader, char * startBuf, size_t len);
+        void wSender::sendPacket(PacketHeader &startHeader, char * startBuf, size_t len, int dataSeq);
         void closeServer();
 
 
@@ -33,6 +36,10 @@ class wSender {
         int windowSize;
         sockaddr_in recAddr{};
         socklen_t recAddrLen{};
+        std::deque<std::pair<int, std::chrono::high_resolution_clock> > sendWindow; 
+
+
+
 };
 
 

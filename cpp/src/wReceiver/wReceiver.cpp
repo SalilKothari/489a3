@@ -1,7 +1,7 @@
 #include "wReceiver.hpp"
 
 void wReceiver::initialize_listen_socket() {
-    receiverfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    receiverfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (receiverfd < 0) {
         spdlog::error("Error in creating server socket");
         std::exit(EXIT_FAILURE);
@@ -25,11 +25,16 @@ void wReceiver::initialize_listen_socket() {
         spdlog::error("Error in binding socket");
         std::exit(EXIT_FAILURE);
     }
+    char ipStr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &addr.sin_addr, ipStr, sizeof(ipStr));
+    spdlog::info("Receiver bound to {}:{}", ipStr, ntohs(addr.sin_port));
 
+    spdlog::info("finished socket stuff");
 }
 
 PacketHeader wReceiver::getHeader() {
     PacketHeader header;
+    spdlog::info("in func");
 
     char buff[sizeof(PacketHeader)];
     size_t totaln = 0;
@@ -37,6 +42,7 @@ PacketHeader wReceiver::getHeader() {
         size_t n = recvfrom(receiverfd, buff + totaln, sizeof(buff) - totaln, 0, reinterpret_cast<sockaddr*>(&senderAddr), &senderAddrLen);
         totaln += n;
     } while(totaln < sizeof(PacketHeader));
+    spdlog::info("RECIEVED");
 
     uint32_t type, seqNum, length, checksum;
 
@@ -54,6 +60,7 @@ PacketHeader wReceiver::getHeader() {
 }
 
 void wReceiver::sendAck(int ackSeqNum) {
+    spdlog::info(" ACK func");
     PacketHeader ack;
 
     ack.type = htons(3);
@@ -72,11 +79,12 @@ void wReceiver::sendAck(int ackSeqNum) {
         ssize_t n = sendto(receiverfd, ackBuf, sizeof(ackBuf), 0, reinterpret_cast<sockaddr*>(&senderAddr), senderAddrLen);
         totalSent += n;
     } while (totalSent < sizeof(ackBuf));
+    spdlog::info(" sent ACK");
 
     std::ofstream log;
     log.clear();
     log.open(outputFile, std::ios::app);
-
+    spdlog::info("log about to ");
     log << ntohs(ack.type) << ' ' << ntohs(ack.seqNum) << ' ' << ntohs(ack.length) << ' ' << ntohs(ack.checksum) << '\n';
 }
 
@@ -85,9 +93,9 @@ void wReceiver::awaitStartPacket() {
     //     spdlog::error("Connection called when already connected");
     //     return;
     // }
-
+    spdlog::info("start packet");
     PacketHeader header = getHeader();
-
+    spdlog::info("got header");
     if (header.type != 0) {
         spdlog::error("Failed to receive initial start packet!");
         std::exit(EXIT_FAILURE);
@@ -99,13 +107,20 @@ void wReceiver::awaitStartPacket() {
         spdlog::error("Start packet must have length of 0");
         std::exit(EXIT_FAILURE);
     }
-
+    spdlog::info("HELLO");
     std::ofstream log;
     log.clear();
     log.open(outputFile, std::ios::app);
-    log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
 
+    log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
+    spdlog::info("Packet log: type={} seqNum={} length={} checksum={}",
+             ntohs(header.type), ntohs(header.seqNum), ntohs(header.length), ntohs(header.checksum));
+
+    spdlog::info("log in awaitStart");
     sendAck(seqNum);
+    spdlog::info("done with ACK and start");
+
+    connected = true;
 }
 
 void wReceiver::initWindow() {
@@ -154,6 +169,7 @@ void wReceiver::adjustWindow() {
 }
 
 void wReceiver::awaitDataPacket() {
+    spdlog::info("Now await Data");
     PacketHeader header = getHeader();
     auto data = getData(header.length);
 
@@ -203,7 +219,6 @@ void wReceiver::awaitDataPacket() {
 
 void wReceiver::run() {
     initWindow();
-
     initialize_listen_socket();
 
     while (true) {

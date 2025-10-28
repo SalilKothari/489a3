@@ -8,6 +8,12 @@
 #include "PacketHeader.hpp"
 #define SERVER_PORT 3000
 
+struct windowItem {
+    int seqNum;
+    std::chrono::high_resolution_clock::time_point startTime;
+    std::vector<char> data;
+};
+
 class wSender {
     public:
         wSender(std::string recHostname, int port, std::string in, std::string out, int windowSize) 
@@ -21,28 +27,22 @@ class wSender {
         void sendStartPacket();
         void sendData();
         void sendAwaitPacket(PacketHeader &startHeader, char * startBuf, size_t len);
-        void wSender::sendPacket(PacketHeader &startHeader, char * startBuf, size_t len, int dataSeq);
+        void sendPacket(PacketHeader &startHeader, char * startBuf, size_t len, int dataSeq);
+        void sendEndPacket();
         void closeServer();
-
+        void run();
 
     private:
         std::string recHostname;
         int port_;
         int recfd_;
-        int senderfd;
         uint32_t seqNum;
         std::string inputFile;
         std::string outputFile;
         int windowSize;
         sockaddr_in recAddr{};
         socklen_t recAddrLen{};
-        std::deque<std::pair<int, std::chrono::high_resolution_clock> > sendWindow; 
-
-
-
+        std::deque<windowItem> sendWindow;
 };
-
-
-
 
 #endif

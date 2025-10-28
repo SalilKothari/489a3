@@ -16,7 +16,7 @@
 #include <cxxopts.hpp>
 #include <spdlog/spdlog.h>
 #include <cctype>
-#include "wServer.hpp"
+#include "wSender.hpp"
 
 
 static void verifyPort(const int port) {
@@ -59,9 +59,8 @@ int main(int argc, char *argv[]) {
 
     verifyPort(port);
     
-    wReceiver wServer(hostname, port, inputFile, outputFile, windowSize);
-
-    wServer.initialize_listen_socket();
-    wServer.closeServer();
+    wSender sender(hostname, port, inputFile, outputFile, windowSize);
+    sender.run();
+    
     return 0;
 }

@@ -316,7 +316,15 @@ void wReceiver::awaitDataPacket() {
     spdlog::info("index: {}", index);
     if (index == -1) {
         spdlog::debug("No space in window - dropping packet");
-        sendAck(packet.header.seqNum); // check this l8tr
+        if (packet.header.seqNum < leftWindowBound) {
+            spdlog::debug("Received old packet seqNum={}, sending ACK",
+                          packet.header.seqNum);
+            sendAck(packet.header.seqNum);
+        } else {
+            spdlog::debug(
+                "Packet seqNum={} is too far ahead, dropping without ACK",
+                packet.header.seqNum);
+        }
         return;
     }    
 

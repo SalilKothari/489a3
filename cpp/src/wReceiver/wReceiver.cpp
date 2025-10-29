@@ -256,27 +256,6 @@ void wReceiver::awaitDataPacket() {
     // PacketHeader header = getHeader();
     // auto data = getData(header.length);
     PacketData packet = getPacket();
-    // Log payload in hex format safely
-    // spdlog::info("Payload (hex):");
-    // std::string hexStr;
-    // for (auto b : packet.payload) {
-    //     char hex[4];
-    //     snprintf(hex, sizeof(hex), "%02x ", b);
-    //     hexStr += hex;
-    // }
-    // spdlog::info("{}", hexStr);
-
-    // Try to convert payload to string handling non-printable chars
-    // std::string strPayload;
-    // for (auto b : packet.payload) {
-    //     if (isprint(b)) {
-    //         strPayload += static_cast<char>(b);
-    //     } else {
-    //         strPayload += '.'; // Replace non-printable chars with dot
-    //     }
-    // }
-    // spdlog::info("Payload (as printable string): {}", strPayload);
-
 
     spdlog::info("after get data");
     if (packet.header.type == 1 && packet.header.seqNum == seqNum) {
@@ -314,17 +293,20 @@ void wReceiver::awaitDataPacket() {
 
     int index = findIndexInWindow(packet.header.seqNum);
     spdlog::info("index: {}", index);
+    
     if (index == -1) {
         spdlog::debug("No space in window - dropping packet");
-        sendAck(dataSeqNum); // check this l8tr
+        if (packet.header.seqNum < leftWindowBound) {
+            spdlog::debug("Received old packet seqNum={}, sending ACK", packet.header.seqNum);
+            sendAck(dataSeqNum);
+        } else {
+            // case that its greater
+            spdlog::debug("Packet seqNum={} is too far ahead, dropping without ACK", packet.header.seqNum);
+        }
+        // sendAck(dataSeqNum); // check this l8tr
         return;
     }    
 
-    // if (window[index].first == packet.header.seqNum && window[index].second.size() > 0) {
-    //     spdlog::info("DUPLICATE found");
-    //     sendAck(dataSeqNum);
-    //     return;
-    // }
 
     window[index] = std::make_pair(packet.header.seqNum, packet.payload);
     spdlog::info("before adjsust window");

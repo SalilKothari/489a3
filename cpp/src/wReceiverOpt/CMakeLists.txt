@@ -2,6 +2,7 @@
 set(
     WRECEIVEROPT
     main.cpp
+    wReceiverOpt.cpp
 )
 
 add_executable(wReceiverOpt ${WRECEIVEROPT})

@@ -66,10 +66,10 @@ PacketHeader wSender::getHeader() {
     memcpy(&length, buff + 8, 4);
     memcpy(&checksum, buff + 12, 4);
 
-    header.type = ntohs(type);
-    header.seqNum = ntohs(seqNum);
-    header.length = ntohs(length);
-    header.checksum = ntohs(checksum);
+    header.type = ntohl(type);
+    header.seqNum = ntohl(seqNum);
+    header.length = ntohl(length);
+    header.checksum = ntohl(checksum);
 
     return header;
 }
@@ -80,16 +80,16 @@ static uint32_t getSeqNum() {
 }
 
 void wSender::logToFile(PacketHeader& header, bool reverse) {
-    std::ofstream ofs;
-    ofs.clear();
-    ofs.open(outputFile, std::ios::app);
+    std::ofstream ofs(outputFile, std::ios::app);
+    // ofs.clear();
+    // ofs.open(outputFile, std::ios::app);
 
     if (!reverse) {
         ofs << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
         return;
     }
 
-    ofs << ntohs(header.type) << ' ' << ntohs(header.seqNum) << ' ' << ntohs(header.length) << ' ' << ntohs(header.checksum) << '\n';
+    ofs << ntohl(header.type) << ' ' << ntohl(header.seqNum) << ' ' << ntohl(header.length) << ' ' << ntohl(header.checksum) << '\n';
 }
 
 
@@ -150,10 +150,10 @@ void wSender::sendStartPacket() {
     PacketHeader startHeader;
     seqNum = getSeqNum();
 
-    startHeader.type = htons(0);
-    startHeader.length = htons(0);
-    startHeader.seqNum = htons(seqNum);
-    startHeader.checksum = htons(0);
+    startHeader.type = htonl(0);
+    startHeader.length = htonl(0);
+    startHeader.seqNum = htonl(seqNum);
+    startHeader.checksum = htonl(0);
 
     char startBuf[sizeof(PacketHeader)];
     memcpy(startBuf, &startHeader.type, 4);
@@ -172,7 +172,9 @@ void wSender::sendPacket(PacketHeader &startHeader, char * startBuf, size_t len,
     FD_SET(recfd_, &readfds);
 
     // Await ACK for start packet
-
+    spdlog::info("Sending packet seqNum={} length={}", dataSeq, len);
+    spdlog::info("Payload (as string): {}", std::string(startBuf + 16, startBuf + 16 + len));
+    
     ssize_t totalSent = 0;
     do {
         ssize_t n = sendto(recfd_, startBuf, len, 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
@@ -194,9 +196,9 @@ void wSender::sendPacket(PacketHeader &startHeader, char * startBuf, size_t len,
 
 void wSender::sendData(){
     spdlog::info("will start sending data");
-    std::ifstream ifs;
-    ifs.clear();
-    ifs.open(inputFile, std::ios::binary);
+    std::ifstream ifs(inputFile, std::ios::binary);
+    // ifs.clear();
+    // ifs.open(inputFile, std::ios::binary);
     spdlog::info("opened input file");
 
     // 1472 for a packet = Header + data
@@ -229,10 +231,10 @@ void wSender::sendData(){
             }
 
             PacketHeader data;
-            data.type = htons(2);
-            data.length = htons(len);
-            data.seqNum = htons(dataSeq);
-            data.checksum = htons(crc32(buf.data() + 16, len)); // i think? bc its over data
+            data.type = htonl(2);
+            data.length = htonl(len);
+            data.seqNum = htonl(dataSeq);
+            data.checksum = htonl(crc32(buf.data() + 16, len)); // i think? bc its over data
 
             memcpy(buf.data(), &data.type, 4);
             memcpy(buf.data() + 4, &data.seqNum, 4);
@@ -282,10 +284,10 @@ void wSender::sendData(){
                 continue;
             }
 
-            if (ackPacket.seqNum > sendWindow.back().seqNum) {
-                spdlog::error("Did not recieve correct number");
-                continue;
-            }
+            // if (ackPacket.seqNum > sendWindow.back().seqNum) {
+            //     spdlog::error("Did not recieve correct number");
+            //     continue;
+            // }
 
             spdlog::info("SendWindow size: {}", sendWindow.size());
             if (sendWindow.empty()) {
@@ -293,22 +295,39 @@ void wSender::sendData(){
                 continue;
             }
 
-            while (!sendWindow.empty() && sendWindow.front().seqNum <= ackPacket.seqNum) {
+            // if (ackPacket.seqNum > sendWindow.back().seqNum) {
+            //     spdlog::error("ACK seqNum {} beyond last sent seqNum {}", ackPacket.seqNum, sendWindow.back().seqNum);
+            //     continue;
+            // }
+
+            spdlog::info("ACK received for seqNum: {} (expecting next packet {})", 
+                 ackPacket.seqNum - 1, ackPacket.seqNum);
+            spdlog::info("SendWindow before popping: size={}, front seqNum={}, back seqNum={}", 
+                 sendWindow.size(), sendWindow.front().seqNum, sendWindow.back().seqNum);
+
+            while (!sendWindow.empty() && sendWindow.front().seqNum < ackPacket.seqNum) {
+                spdlog::info("Removing acknowledged packet seqNum={}", sendWindow.front().seqNum);
                 sendWindow.pop_front();
             }
+            spdlog::info("SendWindow after popping: size={}", sendWindow.size());
+
             if (!sendWindow.empty()) {
                 sendWindow.front().startTime = std::chrono::high_resolution_clock::now();
             }
             
         } else if (await == 0) {
-            spdlog::info("Did we handle this?");
+            spdlog::info("Timeout waiting for ACK; retransmitting unacknowledged packets");
             for (auto &item : sendWindow) {
                 ssize_t totalSent = 0;
                 do {
-                    ssize_t n = sendto(recfd_, item.data.data(), item.data.size(), 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
+                    ssize_t n = sendto(recfd_, item.data.data() + totalSent, item.data.size() - totalSent, 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
+                    if (n < 0) {
+                        spdlog::info("ERROR");
+                    }
                     totalSent += n;
-                } while (totalSent < item.data.size());
+                } while (totalSent < static_cast<ssize_t>(item.data.size()));
                 item.startTime = std::chrono::high_resolution_clock::now();
+                spdlog::info("Retransmitted packet seqNum: {}", item.seqNum);
             }
 
         }
@@ -317,6 +336,7 @@ void wSender::sendData(){
         spdlog::info(totalFileSize);
     }
     ifs.close();
+    spdlog::info("Finished sending all data and receiving ACKs");
 }
 
 void wSender::sendEndPacket() {
@@ -326,10 +346,10 @@ void wSender::sendEndPacket() {
     }
 
     PacketHeader endPacket;
-    endPacket.type = htons(1); 
-    endPacket.length = htons(0);
-    endPacket.seqNum = htons(seqNum);
-    endPacket.checksum = htons(0);
+    endPacket.type = htonl(1); 
+    endPacket.length = htonl(0);
+    endPacket.seqNum = htonl(seqNum);
+    endPacket.checksum = htonl(0);
 
     char endBuf[sizeof(PacketHeader)];
     memcpy(endBuf, &endPacket.type, 4);

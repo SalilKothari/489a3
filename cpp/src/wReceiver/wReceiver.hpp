@@ -18,6 +18,11 @@
 
 #define PACKET_SIZE 1456
 
+struct PacketData {
+    PacketHeader header;
+    std::vector<uint8_t> payload;
+};
+
 class wReceiver {
     public:
         wReceiver(int port, std::string outputDir, std::string out, int windowSize) 
@@ -29,6 +34,7 @@ class wReceiver {
         int findIndexInWindow(size_t seqNum);
         void adjustWindow();
         std::vector<uint8_t> getData(size_t length);
+        PacketData getPacket();
 
         // General flow
         void initWindow();
@@ -53,6 +59,7 @@ class wReceiver {
         size_t dataSeqNum = 0;
         size_t connectionIdx = 0;
         bool connected = false;
+        std::ofstream outputFileStream;
 };
 
 #endif

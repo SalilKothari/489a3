@@ -51,22 +51,91 @@ PacketHeader wReceiver::getHeader() {
     memcpy(&length, buff + 8, 4);
     memcpy(&checksum, buff + 12, 4);
 
-    header.type = ntohs(type);
-    header.seqNum = ntohs(seqNum);
-    header.length = ntohs(length);
-    header.checksum = ntohs(checksum);
+    header.type = ntohl(type);
+    header.seqNum = ntohl(seqNum);
+    header.length = ntohl(length);
+    header.checksum = ntohl(checksum);
+    spdlog::info("Header parsed:");
+    spdlog::info("  type     = {}", header.type);
+    spdlog::info("  seqNum   = {}", header.seqNum);
+    spdlog::info("  length   = {}", header.length);
+    spdlog::info("  checksum = {:#010x}", header.checksum); // hex formatting
 
     return header;
 }
+
+PacketData wReceiver::getPacket() {
+    PacketData packet;
+    std::vector<uint8_t> buffer(1472); // header & packet
+
+    ssize_t totalReceived = recvfrom(receiverfd, buffer.data(), buffer.size(), 0, reinterpret_cast<sockaddr*>(&senderAddr), &senderAddrLen);
+
+    if (totalReceived < 16) {
+        spdlog::error("Received packet too small: {} bytes", totalReceived);
+    }
+
+    uint32_t type, seqNum, length, checksum;
+    memcpy(&type, buffer.data(), 4);
+    memcpy(&seqNum, buffer.data() + 4, 4);
+    memcpy(&length, buffer.data() + 8, 4);
+    memcpy(&checksum, buffer.data() + 12, 4);
+
+    packet.header.type = ntohl(type);
+    packet.header.seqNum = ntohl(seqNum);
+    packet.header.length = ntohl(length);
+    packet.header.checksum = ntohl(checksum);
+
+    spdlog::info("Header parsed:");
+    spdlog::info("  type     = {}", packet.header.type);
+    spdlog::info("  seqNum   = {}", packet.header.seqNum);
+    spdlog::info("  length   = {}", packet.header.length);
+    spdlog::info("  checksum = {:#010x}", packet.header.checksum); // hex formatting
+
+    if (packet.header.length > 0) {
+        if (totalReceived < 16 + static_cast<ssize_t>(packet.header.length)) {
+            spdlog::error("Packet truncated: expected {} bytes, got {}", 
+                         16 + packet.header.length, totalReceived);
+            packet.header.type = 999; // Invalid
+            return packet;
+        }
+        
+        packet.payload.resize(packet.header.length);
+        memcpy(packet.payload.data(), buffer.data() + 16, packet.header.length);
+        
+        // Log payload
+        spdlog::info("Payload (hex):");
+        std::string hexStr;
+        for (auto b : packet.payload) {
+            char hex[4];
+            snprintf(hex, sizeof(hex), "%02x ", b);
+            hexStr += hex;
+        }
+        spdlog::info("{}", hexStr);
+        
+        std::string strPayload;
+        for (auto b : packet.payload) {
+            if (isprint(b)) {
+                strPayload += static_cast<char>(b);
+            } else {
+                strPayload += '.';
+            }
+        }
+        spdlog::info("Payload (as printable string): {}", strPayload);
+    }
+    
+    return packet;
+
+}
+
 
 void wReceiver::sendAck(int ackSeqNum) {
     spdlog::info(" ACK func");
     PacketHeader ack;
 
-    ack.type = htons(3);
-    ack.seqNum = htons(ackSeqNum);
-    ack.length = htons(0);
-    ack.checksum = htons(0);
+    ack.type = htonl(3);
+    ack.seqNum = htonl(ackSeqNum);
+    ack.length = htonl(0);
+    ack.checksum = htonl(0);
 
     uint8_t ackBuf[sizeof(PacketHeader)];
     memcpy(ackBuf, &ack.type, 4);
@@ -81,11 +150,11 @@ void wReceiver::sendAck(int ackSeqNum) {
     } while (totalSent < sizeof(ackBuf));
     spdlog::info(" sent ACK");
 
-    std::ofstream log;
-    log.clear();
-    log.open(outputFile, std::ios::app);
+    std::ofstream log(outputFile, std::ios::app);
+    // log.clear();
+    // log.open(outputFile, std::ios::app);
     spdlog::info("log about to ");
-    log << ntohs(ack.type) << ' ' << ntohs(ack.seqNum) << ' ' << ntohs(ack.length) << ' ' << ntohs(ack.checksum) << '\n';
+    log << ntohl(ack.type) << ' ' << ntohl(ack.seqNum) << ' ' << ntohl(ack.length) << ' ' << ntohl(ack.checksum) << '\n';
 }
 
 void wReceiver::awaitStartPacket() {
@@ -108,19 +177,29 @@ void wReceiver::awaitStartPacket() {
         std::exit(EXIT_FAILURE);
     }
     spdlog::info("HELLO");
-    std::ofstream log;
-    log.clear();
-    log.open(outputFile, std::ios::app);
+    spdlog::info("Output log file: {}", outputFile);
+    std::ofstream log(outputFile, std::ios::app);
+    // log.clear();
+    // log.open(outputFile, std::ios::app);
+    if (!log.is_open()) {
+        spdlog::error("Failed to open log file: {}", outputFile);
+    }
 
     log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
     spdlog::info("Packet log: type={} seqNum={} length={} checksum={}",
-             ntohs(header.type), ntohs(header.seqNum), ntohs(header.length), ntohs(header.checksum));
+             header.type, header.seqNum, header.length, header.checksum);
 
     spdlog::info("log in awaitStart");
     sendAck(seqNum);
     spdlog::info("done with ACK and start");
 
     connected = true;
+    outputFileStream.open(outputDir + "/FILE-" + std::to_string(connectionIdx) + ".out", 
+                          std::ios::trunc | std::ios::binary);
+    if (!outputFileStream.is_open()) {
+        spdlog::error("Failed to open output file");
+    }
+
 }
 
 void wReceiver::initWindow() {
@@ -138,25 +217,26 @@ int wReceiver::findIndexInWindow(size_t seqNum) {
     return seqNum - leftWindowBound;
 } 
 
-std::vector<uint8_t> wReceiver::getData(size_t length) {
-    auto data = std::vector<uint8_t>(length);
+// std::vector<uint8_t> wReceiver::getData(size_t length) {
+//     spdlog::info("get data length: {}", length);
+//     auto data = std::vector<uint8_t>(length);
 
-    size_t totaln = 0;
-    do {
-        size_t n = recvfrom(receiverfd, data.data() + totaln, length - totaln, 0, reinterpret_cast<sockaddr*>(&senderAddr), &senderAddrLen);
-        totaln += n;
-    } while(totaln < length);
-
-    return data;
-}
+//     size_t totaln = 0;
+//     do {
+//         size_t n = recvfrom(receiverfd, data.data(), length, 0, reinterpret_cast<sockaddr*>(&senderAddr), &senderAddrLen);
+//         totaln += n;
+//     } while(totaln < length);
+//     spdlog::info("data: {}", std::string(data.begin(), data.end()));
+//     return data;
+// }
 
 void wReceiver::adjustWindow() {
-    std::ofstream ofs;
-    ofs.clear();
-    ofs.open(outputDir + "/FILE-" + std::to_string(connectionIdx) + ".out", std::ios::app);
+    // std::ofstream ofs(outputDir + "/FILE-" + std::to_string(connectionIdx) + ".out", std::ios::app);
+    // ofs.clear();
+    // ofs.open(outputDir + "/FILE-" + std::to_string(connectionIdx) + ".out", std::ios::app);
 
-    while (window.begin()->second.size() != 0) {
-        ofs.write(reinterpret_cast<char *>(window.begin()->second.data()), window.begin()->second.size());
+    while (!window.empty() && window.begin()->second.size() != 0) {
+        outputFileStream.write(reinterpret_cast<char *>(window.begin()->second.data()), window.begin()->second.size());
         window.pop_front();
         std::vector<uint8_t> m;
         window.push_back(std::make_pair(0, m));
@@ -166,55 +246,88 @@ void wReceiver::adjustWindow() {
         dataSeqNum++;
         
     }
+    outputFileStream.flush();
 }
 
 void wReceiver::awaitDataPacket() {
     spdlog::info("Now await Data");
-    PacketHeader header = getHeader();
-    auto data = getData(header.length);
+    // PacketHeader header = getHeader();
+    // auto data = getData(header.length);
+    PacketData packet = getPacket();
+    // Log payload in hex format safely
+    // spdlog::info("Payload (hex):");
+    // std::string hexStr;
+    // for (auto b : packet.payload) {
+    //     char hex[4];
+    //     snprintf(hex, sizeof(hex), "%02x ", b);
+    //     hexStr += hex;
+    // }
+    // spdlog::info("{}", hexStr);
 
-    if (header.type == 1 && header.seqNum == seqNum) {
+    // Try to convert payload to string handling non-printable chars
+    // std::string strPayload;
+    // for (auto b : packet.payload) {
+    //     if (isprint(b)) {
+    //         strPayload += static_cast<char>(b);
+    //     } else {
+    //         strPayload += '.'; // Replace non-printable chars with dot
+    //     }
+    // }
+    // spdlog::info("Payload (as printable string): {}", strPayload);
+
+
+    spdlog::info("after get data");
+    if (packet.header.type == 1 && packet.header.seqNum == seqNum) {
+        spdlog::info("in end packet");
+        outputFileStream.close();
         connectionIdx++;
-        std::ofstream log;
-        log.clear();
-        log.open(outputFile, std::ios::app);
-        log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
+        std::ofstream log(outputFile, std::ios::app);
+        // log.clear();
+        // log.open(outputFile, std::ios::app);
+        log << packet.header.type << ' ' << packet.header.seqNum << ' ' << packet.header.length << ' ' << packet.header.checksum << '\n';
         
         sendAck(seqNum);
         leftWindowBound = 0;
         rightWindowBound = windowSize - 1;
         connected = false;
         dataSeqNum = 0;
+        return;
     }
 
-    if (header.type != 2) {
+    if (packet.header.type != 2) {
+        spdlog::info("oh no");
         spdlog::debug("Expecting data packet");
         return;
     }
 
-    if (crc32(data.data(), data.size()) != header.checksum) {
-        spdlog::debug("DATA PACKET IS CORRUPTED");
-        return;
+    if (packet.payload.size() > 0) {
+        if (crc32(packet.payload.data(), packet.payload.size()) != packet.header.checksum) {
+            spdlog::info("2");
+            spdlog::debug("DATA PACKET IS CORRUPTED");
+            return;
+        }
     }
 
-    int index = findIndexInWindow(header.seqNum);
+    int index = findIndexInWindow(packet.header.seqNum);
+    spdlog::info("index: {}", index);
     if (index == -1) {
         spdlog::debug("No space in window - dropping packet");
         sendAck(dataSeqNum); // check this l8tr
         return;
     }    
 
-    window[index] = std::make_pair(seqNum, data);
-    
+    window[index] = std::make_pair(packet.header.seqNum, packet.payload);
+    spdlog::info("before adjsust window");
     adjustWindow();
+    spdlog::info("after adjsust window");
+    std::ofstream log(outputFile, std::ios::app);
+    // log.clear();
+    // log.open(outputFile, std::ios::app);
 
-    std::ofstream log;
-    log.clear();
-    log.open(outputFile, std::ios::app);
-
-    log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
-
+    log << packet.header.type << ' ' << packet.header.seqNum << ' ' << packet.header.length << ' ' << packet.header.checksum << '\n';
+    spdlog::info("after data ack log & send ack");
     sendAck(dataSeqNum);
+    spdlog::info("after data send ack");
 }
 
 void wReceiver::run() {

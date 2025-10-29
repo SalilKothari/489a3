@@ -155,6 +155,7 @@ void wReceiver::sendAck(int ackSeqNum) {
     // log.open(outputFile, std::ios::app);
     spdlog::info("log about to ");
     log << ntohl(ack.type) << ' ' << ntohl(ack.seqNum) << ' ' << ntohl(ack.length) << ' ' << ntohl(ack.checksum) << '\n';
+    log.close();
 }
 
 void wReceiver::awaitStartPacket() {
@@ -186,6 +187,7 @@ void wReceiver::awaitStartPacket() {
     }
 
     log << header.type << ' ' << header.seqNum << ' ' << header.length << ' ' << header.checksum << '\n';
+    log.close();
     spdlog::info("Packet log: type={} seqNum={} length={} checksum={}",
              header.type, header.seqNum, header.length, header.checksum);
 
@@ -285,8 +287,10 @@ void wReceiver::awaitDataPacket() {
         // log.clear();
         // log.open(outputFile, std::ios::app);
         log << packet.header.type << ' ' << packet.header.seqNum << ' ' << packet.header.length << ' ' << packet.header.checksum << '\n';
-        
+        log.close();
+
         sendAck(seqNum);
+
         leftWindowBound = 0;
         rightWindowBound = windowSize - 1;
         connected = false;
@@ -316,6 +320,12 @@ void wReceiver::awaitDataPacket() {
         return;
     }    
 
+    // if (window[index].first == packet.header.seqNum && window[index].second.size() > 0) {
+    //     spdlog::info("DUPLICATE found");
+    //     sendAck(dataSeqNum);
+    //     return;
+    // }
+
     window[index] = std::make_pair(packet.header.seqNum, packet.payload);
     spdlog::info("before adjsust window");
     adjustWindow();
@@ -325,6 +335,8 @@ void wReceiver::awaitDataPacket() {
     // log.open(outputFile, std::ios::app);
 
     log << packet.header.type << ' ' << packet.header.seqNum << ' ' << packet.header.length << ' ' << packet.header.checksum << '\n';
+    log.close();
+
     spdlog::info("after data ack log & send ack");
     sendAck(dataSeqNum);
     spdlog::info("after data send ack");

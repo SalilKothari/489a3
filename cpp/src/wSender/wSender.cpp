@@ -172,8 +172,8 @@ void wSender::sendPacket(PacketHeader &startHeader, char * startBuf, size_t len,
     FD_SET(recfd_, &readfds);
 
     // Await ACK for start packet
-    spdlog::info("Sending packet seqNum={} length={}", dataSeq, len);
-    spdlog::info("Payload (as string): {}", std::string(startBuf + 16, startBuf + 16 + len));
+    // spdlog::info("Sending packet seqNum={} length={}", dataSeq, len);
+    // spdlog::info("Payload (as string): {}", std::string(startBuf + 16, startBuf + 16 + len));
     
     ssize_t totalSent = 0;
     do {
@@ -211,7 +211,7 @@ void wSender::sendData(){
     spdlog::info("random check here");
 
     while (totalRead < totalFileSize || !sendWindow.empty()) {
-        spdlog::info("Loop start: totalRead = {}, window size = {}", totalRead, sendWindow.size());
+        // spdlog::info("Loop start: totalRead = {}, window size = {}", totalRead, sendWindow.size());
 
         spdlog::info("enter first while");
         while (sendWindow.size() < static_cast<size_t>(windowSize) && totalRead < totalFileSize) {      
@@ -289,7 +289,7 @@ void wSender::sendData(){
             //     continue;
             // }
 
-            spdlog::info("SendWindow size: {}", sendWindow.size());
+            // spdlog::info("SendWindow size: {}", sendWindow.size());
             if (sendWindow.empty()) {
                 spdlog::warn("Received ACK but sendWindow is empty");
                 continue;

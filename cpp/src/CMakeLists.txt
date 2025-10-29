@@ -14,7 +14,5 @@
 add_subdirectory(common)
 add_subdirectory(wSender)
 add_subdirectory(wReceiver)
-# add_subdirectory(wSenderOpt)
-# add_subdirectory(wReceiverOpt)
-
-
+add_subdirectory(wSenderOpt)
+add_subdirectory(wReceiverOpt)

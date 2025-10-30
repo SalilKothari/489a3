@@ -12,6 +12,7 @@ struct windowItem {
     int seqNum;
     std::chrono::high_resolution_clock::time_point startTime;
     std::vector<char> data;
+    bool acked = false;
 };
 
 class wSender {

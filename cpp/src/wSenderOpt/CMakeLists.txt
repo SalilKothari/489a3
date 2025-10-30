@@ -2,6 +2,7 @@
 set(
     WSENDEROPT
     main.cpp
+    wSenderOpt.cpp
 )
 
 add_executable(wSenderOpt ${WSENDEROPT})

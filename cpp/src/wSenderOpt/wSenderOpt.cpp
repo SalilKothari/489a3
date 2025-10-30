@@ -8,7 +8,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <spdlog/spdlog.h>
-#include <cassert>
 #include <filesystem>
 #include "Crc32.hpp"
 
@@ -55,8 +54,10 @@ PacketHeader wSender::getHeader() {
     char buff[sizeof(PacketHeader)];
     size_t totaln = 0;
     do {
-        size_t n = recvfrom(recfd_, buff + totaln, sizeof(buff) - totaln, 0, reinterpret_cast<sockaddr*>(&recAddr), &recAddrLen);
-        totaln += n;
+      size_t n =
+          recvfrom(recfd_, buff + totaln, sizeof(buff) - totaln, 0,
+                   reinterpret_cast<sockaddr *>(&recAddr), &recAddrLen);
+      totaln += n;
     } while (totaln < sizeof(PacketHeader));
 
     uint32_t type, seqNum, length, checksum;
@@ -194,7 +195,7 @@ void wSender::sendPacket(PacketHeader &startHeader, char * startBuf, size_t len,
     sendWindow.emplace_back(item);
 }
 
-void wSender::sendData(){
+void wSender::sendData() {
     spdlog::info("will start sending data");
     std::ifstream ifs(inputFile, std::ios::binary);
     // ifs.clear();
@@ -264,7 +265,77 @@ void wSender::sendData(){
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(recfd_, &readfds);
-        
+
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 5000;
+
+        int await = select(recfd_ + 1, &readfds, nullptr, nullptr, &timeout);
+        if (await < 0) {
+            spdlog::error("Select returned 0!");
+            break;
+        }
+
+        if (await > 0 && FD_ISSET(recfd_, &readfds)) {
+            spdlog::info("await >0");
+            PacketHeader ackPacket = getHeader();
+
+            if (ackPacket.type != 3) {
+                spdlog::error("Did not recieve ACK");
+                continue;
+            }
+
+            if (sendWindow.empty()) {
+                spdlog::warn("Received ACK but sendWindow is empty");
+                continue;
+            }
+
+            spdlog::info(
+                "ACK received for seqNum: {} (expecting next packet {})",
+                ackPacket.seqNum - 1, ackPacket.seqNum);
+            spdlog::info("SendWindow before popping: size={}, front seqNum={}, "
+                         "back seqNum={}",
+                         sendWindow.size(), sendWindow.front().seqNum,
+                         sendWindow.back().seqNum);
+
+            for (auto& packet : sendWindow) {
+                if (ackPacket.seqNum == packet.seqNum && !packet.acked) {
+                    packet.acked = true;
+                }
+            }
+        }
+
+        for (auto& packet : sendWindow) {
+            if (packet.acked) {
+                continue;
+            }
+
+            auto timeElapsed =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::high_resolution_clock::now() - packet.startTime);
+
+            if (timeElapsed.count() >= 500) {
+                // Retransmit packet
+                PacketHeader header;
+                packet.data.data();
+                memcpy(&header.type, packet.data.data(), 4);
+                memcpy(&header.seqNum, packet.data.data() + 4, 4);
+                memcpy(&header.length, packet.data.data() + 8, 4);
+                memcpy(&header.checksum, packet.data.data() + 12, 4);
+
+                sendPacket(header, packet.data.data(), packet.data.size(),
+                           packet.seqNum);
+
+                packet.startTime = std::chrono::high_resolution_clock::now();
+            }
+        }
+
+        while (!sendWindow.empty() && sendWindow.front().acked) {
+            sendWindow.pop_front();
+        }
+
+    }
+        /*
         struct timeval timeout;
         timeout.tv_sec = 0;
         timeout.tv_usec = 500000;
@@ -301,28 +372,35 @@ void wSender::sendData(){
             // }
 
             spdlog::info("ACK received for seqNum: {} (expecting next packet {})", 
-                 ackPacket.seqNum - 1, ackPacket.seqNum);
+                         ackPacket.seqNum - 1, ackPacket.seqNum);
             spdlog::info("SendWindow before popping: size={}, front seqNum={}, back seqNum={}", 
-                 sendWindow.size(), sendWindow.front().seqNum, sendWindow.back().seqNum);
+                         sendWindow.size(), sendWindow.front().seqNum, sendWindow.back().seqNum);
 
-            while (!sendWindow.empty() && sendWindow.front().seqNum < ackPacket.seqNum) {
-                spdlog::info("Removing acknowledged packet seqNum={}", sendWindow.front().seqNum);
+            while (!sendWindow.empty() &&
+                sendWindow.front().seqNum < ackPacket.seqNum) {
+                spdlog::info("Removing acknowledged packet seqNum={}",
+                             sendWindow.front().seqNum);
                 sendWindow.pop_front();
             }
             spdlog::info("SendWindow after popping: size={}", sendWindow.size());
 
             if (!sendWindow.empty()) {
-                sendWindow.front().startTime = std::chrono::high_resolution_clock::now();
+                sendWindow.front().startTime =
+                    std::chrono::high_resolution_clock::now();
             }
-            
+
         } else if (await == 0) {
-            spdlog::info("Timeout waiting for ACK; retransmitting unacknowledged packets");
+            spdlog::info(
+                "Timeout waiting for ACK; retransmitting unacknowledged packets");
             for (auto &item : sendWindow) {
                 ssize_t totalSent = 0;
                 do {
-                    ssize_t n = sendto(recfd_, item.data.data() + totalSent, item.data.size() - totalSent, 0, reinterpret_cast<sockaddr*>(&recAddr), recAddrLen);
-                    if (n < 0) {
-                        spdlog::info("ERROR");
+                  ssize_t n = sendto(recfd_, item.data.data() + totalSent,
+                                     item.data.size() - totalSent, 0,
+                                     reinterpret_cast<sockaddr *>(&recAddr),
+                                     recAddrLen);
+                  if (n < 0) {
+                    spdlog::info("ERROR");
                     }
                     totalSent += n;
                 } while (totalSent < static_cast<ssize_t>(item.data.size()));
@@ -335,6 +413,8 @@ void wSender::sendData(){
         spdlog::info(totalRead);
         spdlog::info(totalFileSize);
     }
+    */
+
     ifs.close();
     spdlog::info("Finished sending all data and receiving ACKs");
 }
